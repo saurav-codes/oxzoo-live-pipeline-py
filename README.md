@@ -26,13 +26,14 @@ hourly rollups and search.
 
 ## ox features used
 
-- `[app] start` (Starlette is not a detected framework), `[app] health`.
+- Starlette detection (the uvicorn start, since ox 740c9efc), `[app] health`.
 - `[build] migrate`: `python stores.py` creates tables, indexes and
   collections; every step is idempotent.
 - `[workers] puller` (128M), `[cron] rollup`.
 - `qdrant = {}` (built-in), `[services.search]` (Meilisearch via
   `github:meilisearch/meilisearch@1.54.2`, copied from search-svc) and
-  `[services.clickhouse]` (custom run line, `backup = false`).
+  `[services.clickhouse]` (`tool = "github:clickhouse/clickhouse@26.8.21.10-lts"`,
+  a run line that writes its config, `backup = false`).
 
 ## Variables
 
@@ -93,12 +94,13 @@ probe all 5 checks ok, page and preflight fine, SIGTERM stops the puller.
 ```
 ox check . (manifest: ox.toml)
 
-  app.start                  exec .venv/bin/uvicorn app:app --host 127.0.0.1 --port $PORT declared
+  app.start                  uv run uvicorn app:app --host 127.0.0.1 --port $PORT detected:app.py
   app.health                 /_zoo/health                                         declared
   build.install              uv sync --frozen --no-dev                            detected:uv.lock
   build.migrate              uv run python stores.py                              declared
   workers.puller             exec .venv/bin/python puller.py                      declared
   cron.rollup                */5 * * * *  uv run python rollup.py                 declared
+  tools.github:clickhouse/clickhouse 26.8.21.10-lts                                       declared
   tools.github:meilisearch/meilisearch 1.54.2                                               declared
   tools.github:qdrant/qdrant 1.19.1                                               default
   tools.python               3.13                                                 detected:.python-version
@@ -113,16 +115,14 @@ ox check . (manifest: ox.toml)
 Ready to deploy.
 ```
 
-## Why ClickHouse is a run line
+## ClickHouse as a tool
 
-- `tool = "github:ClickHouse/ClickHouse@..."` is refused (ox tool names are
-  lowercase only). The lowercase form passes, but mise picks the
-  `clickhouse-client` tarball, which has no server.
-- Ubuntu has no `clickhouse-server` package after noble.
-
-So the run line downloads the official `clickhouse-common-static` tarball
-for the pinned version, checks its sha256, and keeps only the `clickhouse`
-binary (about 800 MB) in the service data dir.
+`github:clickhouse/clickhouse@26.8.21.10-lts` installs the official
+`clickhouse-common-static` build, which ox pins and checks against its
+sha256 (ox 8b86520a, x86_64 only). Until then the run line downloaded and
+checked the tarball itself, because mise picked the `clickhouse-client`
+tarball, which has no server, and Ubuntu has no `clickhouse-server` package
+after noble.
 
 Not verified here: the Linux ClickHouse build running under ox's sandbox
 (the run line was tested on macOS up to the exec, and the same config ran

@@ -1,6 +1,4 @@
-# Starlette is not a detected framework, so the start is declared.
 [app]
-start  = "exec .venv/bin/uvicorn app:app --host 127.0.0.1 --port $PORT"
 health = "/_zoo/health"
 
 [build]
@@ -23,37 +21,21 @@ health   = "/health"
 memory   = "256M"
 provides = { MEILI_URL = "http://${host}:${port}", MEILI_MASTER_KEY = "${password}" }
 
-# ClickHouse has no usable tool or apt package (see README), so the run
-# line fetches the pinned official build once into the data dir, checks its
-# sha256, and writes a small config: HTTP only on 127.0.0.1:$PORT (no TCP,
+# ClickHouse's official static build, pinned and sha256-checked by ox. The
+# run line writes a small config: HTTP only on 127.0.0.1:$PORT (no TCP,
 # MySQL, PostgreSQL or interserver ports), the default user's password is
 # the service password as sha256, and memory under the 1G cap. Not backed
-# up: the binary is large and every row is pulled again from event-bus.
+# up: every row is pulled again from event-bus.
 [services.clickhouse]
+tool = "github:clickhouse/clickhouse@26.8.21.10-lts"
 run = '''
-CLICKHOUSE_VERSION=26.8.21.10
-case "$(uname -m)" in
-  x86_64)  arch=amd64; sum=95e50bd197f53bfc56f5e58c2a66e2c1108de0d83a68c77100a18bcd5f47d055 ;;
-  aarch64) arch=arm64; sum=73085df7fed46a1e07ee6c97ec455a6f5e3f46afdfec674c372f276b1bfa00b6 ;;
-  *) echo "no ClickHouse build for $(uname -m)" >&2; exit 1 ;;
-esac
-bin="$SERVICE_DATA_DIR/bin/clickhouse-$CLICKHOUSE_VERSION"
-if [ ! -x "$bin" ]; then
-  rm -rf "$SERVICE_DATA_DIR/dl"; mkdir -p "$SERVICE_DATA_DIR/dl" "$SERVICE_DATA_DIR/bin"
-  curl -fsSL --retry 3 --connect-timeout 10 --max-time 600 -o "$SERVICE_DATA_DIR/dl/ch.tgz" \
-    "https://github.com/ClickHouse/ClickHouse/releases/download/v$CLICKHOUSE_VERSION-lts/clickhouse-common-static-$CLICKHOUSE_VERSION-$arch.tgz"
-  echo "$sum  $SERVICE_DATA_DIR/dl/ch.tgz" | sha256sum -c --quiet -
-  tar -xzf "$SERVICE_DATA_DIR/dl/ch.tgz" -C "$SERVICE_DATA_DIR/dl" "clickhouse-common-static-$CLICKHOUSE_VERSION/usr/bin/clickhouse"
-  mv "$SERVICE_DATA_DIR/dl/clickhouse-common-static-$CLICKHOUSE_VERSION/usr/bin/clickhouse" "$bin"
-  rm -rf "$SERVICE_DATA_DIR/dl"
-fi
 cd "$SERVICE_DATA_DIR"
 umask 077
 mkdir -p db tmp user_files
 hash=$(printf '%s' "$SERVICE_PASSWORD" | sha256sum | cut -d' ' -f1)
 printf '<clickhouse><users><default><password_sha256_hex>%s</password_sha256_hex><networks><ip>127.0.0.1</ip><ip>::1</ip></networks><profile>default</profile><quota>default</quota></default></users><profiles><default><max_memory_usage>536870912</max_memory_usage><max_execution_time>30</max_execution_time></default></profiles><quotas><default/></quotas></clickhouse>\n' "$hash" > users.xml
 printf '<clickhouse><logger><level>warning</level><console>1</console></logger><listen_host>127.0.0.1</listen_host><http_port>%s</http_port><path>%s/db/</path><tmp_path>%s/tmp/</tmp_path><user_files_path>%s/user_files/</user_files_path><user_directories><users_xml><path>users.xml</path></users_xml></user_directories><max_server_memory_usage>805306368</max_server_memory_usage><mark_cache_size>67108864</mark_cache_size><index_mark_cache_size>16777216</index_mark_cache_size><uncompressed_cache_size>0</uncompressed_cache_size><max_concurrent_queries>32</max_concurrent_queries><mlock_executable>false</mlock_executable></clickhouse>\n' "$PORT" "$SERVICE_DATA_DIR" "$SERVICE_DATA_DIR" "$SERVICE_DATA_DIR" > config.xml
-exec "$bin" server --config-file=config.xml
+exec clickhouse server --config-file=config.xml
 '''
 health   = "/ping"
 memory   = "1G"
