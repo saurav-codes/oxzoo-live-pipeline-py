@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ name }}</title>
+<style>
+  body { font: 14px/1.45 system-ui, sans-serif; color: #2b2b2b; margin: 2rem auto; max-width: 980px; padding: 0 1rem; }
+  table { border-collapse: collapse; width: 100%; margin-bottom: 1.5rem; }
+  th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid #eee; vertical-align: top; }
+  section { border: 1px solid #e5e5e5; border-radius: 14px; padding: 6px 16px 10px; margin-bottom: 1rem; }
+  .bad { color: #c62828; } .ok { color: #1a7f37; } .subtle { color: #777; }
+  input { font: inherit; padding: 6px 10px; border: 1px solid #ccc; border-radius: 10px; width: 60%; }
+  button { font: inherit; padding: 6px 14px; border-radius: 10px; border: 1px solid #bbb; background: #f6f6f6; }
+</style>
+</head>
+<body>
+<h1>{{ name }}</h1>
+<p class="subtle">The puller copies event-bus events into ClickHouse, a Qdrant collection and a Meilisearch
+  index every 5 s; a cron rolls them up per hour. JSON: <a href="/api/stats">/api/stats</a>,
+  <a href="/_zoo/probe">/_zoo/probe</a></p>
+
+<section>
+  <h2>Pipeline</h2>
+  {% if stats_error %}<p class="bad">{{ stats_error }}</p>
+  {% else %}
+  <p class="{{ 'ok' if stats.last_pull_age_s <= 30 else 'bad' }}">{{ stats.events }} events stored, cursor at
+    event {{ stats.cursor }}, last pull {{ stats.last_pull_age_s }} s ago.</p>
+  <table>
+    <tr><th>Hour (UTC)</th><th>Kind</th><th>Events</th></tr>
+    {% for r in stats.hourly %}<tr><td>{{ r.hour }}</td><td>{{ r.kind }}</td><td>{{ r.events }}</td></tr>
+    {% else %}<tr><td colspan="3" class="subtle">no rollup yet</td></tr>{% endfor %}
+  </table>
+  {% endif %}
+</section>
+
+<section>
+  <h2>Search</h2>
+  <form method="get" action="/"><input name="q" value="{{ q }}" maxlength="200" placeholder="otters"> <button>Search</button></form>
+  {% if results_error %}<p class="bad">{{ results_error }}</p>{% endif %}
+  {% if results %}
+  <h3>Meilisearch</h3>
+  <table>{% for h in results.hits %}<tr><td>{{ h.id }}</td><td>{{ h.kind }}</td><td>{{ h.text }}</td></tr>
+    {% else %}<tr><td class="subtle">no hits</td></tr>{% endfor %}</table>
+  <h3>Qdrant, nearest by hash vector</h3>
+  <table>{% for p in results.similar %}<tr><td>{{ p.id }}</td><td>{{ p.score }}</td><td>{{ p.text }}</td></tr>
+    {% else %}<tr><td class="subtle">no points</td></tr>{% endfor %}</table>
+  {% endif %}
+</section>
+
+{% if stats and stats.recent %}
+<section>
+  <h2>Latest events</h2>
+  <table>
+    <tr><th>Id</th><th>Kind</th><th>Text</th><th>Created</th></tr>
+    {% for e in stats.recent %}<tr><td>{{ e.id }}</td><td>{{ e.kind }}</td><td>{{ e.text }}</td><td>{{ e.created_at }}</td></tr>{% endfor %}
+  </table>
+</section>
+{% endif %}
+</body>
+</html>

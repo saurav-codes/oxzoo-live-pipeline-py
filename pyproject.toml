@@ -1,0 +1,21 @@
+[project]
+name = "pipeline-py"
+version = "1.0.0"
+description = "oxzoo-live pipeline-py: Starlette app and a puller worker feeding ClickHouse, Qdrant and Meilisearch"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "starlette>=0.47",
+    "uvicorn>=0.35",
+    "httpx>=0.28",
+    "jinja2>=3.1",
+]
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
